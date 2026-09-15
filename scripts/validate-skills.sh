@@ -20,6 +20,20 @@ require_text() {
   fi
 }
 
+require_directory_with_markdown() {
+  local directory="$1"
+  local label="$2"
+
+  if [[ ! -d "$directory" ]]; then
+    fail "missing $label directory: $directory"
+    return
+  fi
+
+  if ! find "$directory" -maxdepth 1 -type f -name '*.md' | grep -q .; then
+    fail "$label directory has no Markdown files: $directory"
+  fi
+}
+
 if [[ ! -d "$SKILLS_DIR" ]]; then
   echo "ERROR: skills directory does not exist: $SKILLS_DIR"
   exit 1
@@ -68,12 +82,20 @@ for skill_dir in "$SKILLS_DIR"/*; do
   require_text "$skill_file" "^## .*Output format" "Output format"
   require_text "$skill_file" "^## .*Quality rules" "Quality rules"
 
+  require_directory_with_markdown "$skill_dir/references" "references"
+  require_directory_with_markdown "$skill_dir/assets" "assets"
+
+  if [[ ! -f "$skill_dir/evals/rubric.md" ]]; then
+    fail "missing evals/rubric.md"
+  fi
+
   if [[ ! -f "$eval_file" ]]; then
     fail "missing evals/cases.json"
   elif ! python3 -m json.tool "$eval_file" >/dev/null; then
     fail "invalid JSON in evals/cases.json"
   else
-    case_count="$(python3 - "$eval_file" <<'PY'
+    case_count="$(
+      python3 - "$eval_file" <<'PY'
 import json
 import sys
 
@@ -82,22 +104,11 @@ with open(sys.argv[1], encoding="utf-8") as f:
 
 print(len(cases) if isinstance(cases, list) else 0)
 PY
-)"
+    )"
+
     if [[ "$case_count" -lt 5 ]]; then
       fail "evals/cases.json must contain at least 5 cases; found $case_count"
     fi
-  fi
-
-  if [[ ! -f "$skill_dir/evals/rubric.md" ]]; then
-    fail "missing evals/rubric.md"
-  fi
-
-  if [[ ! -d "$skill_dir/references" ]]; then
-    fail "missing references directory"
-  fi
-
-  if [[ ! -d "$skill_dir/assets" ]]; then
-    fail "missing assets directory"
   fi
 
   echo "  OK"
